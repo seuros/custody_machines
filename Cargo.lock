@@ -150,7 +150,7 @@ dependencies = [
 
 [[package]]
 name = "custody-machines"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "apple-native-keyring-store",
  "dbus-secret-service-keyring-store",
