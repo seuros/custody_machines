@@ -108,3 +108,6 @@ impl<const N: usize> Custodian<N> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
