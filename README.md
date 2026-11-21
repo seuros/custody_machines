@@ -120,7 +120,7 @@ The authority is the most preferred durable source holding the key. A cache is o
 
 ### Copies go only where they are safe
 
-Writable caches that are empty, stale or rejected get the key. So does the most preferred writable durable source that answered empty and ranks above the best durable holder. That one rule rescues a cache-only key into durable storage and moves a key up when a better source appears. Read-only, unreachable and rejected durable sources are never written, and every write is read back before it counts.
+Writable caches that are empty, stale or rejected get the key. So does the most preferred writable durable source that answered empty and ranks above the best durable holder. That one rule rescues a cache-only key into durable storage and moves a key up when a better source appears. Read-only, unreachable and rejected durable sources are never written, and every write is read back before it counts. Over sealed data the key is proven with `opens` before any durable copy, since a durable copy of the wrong key could never be replaced by the right one. A durable source that refuses the write, such as a locked Secret Service collection that cannot show its unlock prompt, counts as unreachable from then on, and the next durable source takes the key.
 
 ### `Unreachable` is not `Empty`
 

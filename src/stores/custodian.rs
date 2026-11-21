@@ -172,13 +172,12 @@ impl<const N: usize> Custodian<N> {
                         Self::set_aside(survey, open.fingerprint, &Status::Rejected);
                         continue;
                     }
-                    for target in open.copy_to.iter() {
-                        self.copy(survey, target, &secret, open.fingerprint);
-                    }
-                    let custody = self
-                        .ladder
-                        .open(&survey.observed, vault)
-                        .map_or(open.custody, |after| after.custody);
+                    let fingerprint = open.fingerprint;
+                    let prove = || Self::proves(&mut proven, fingerprint, &secret, &mut opens);
+                    let Some(custody) = self.copy_all(survey, vault, open, &secret, prove) else {
+                        Self::set_aside(survey, fingerprint, &Status::Rejected);
+                        continue;
+                    };
                     return Ok(Key {
                         secret,
                         custody,
@@ -220,16 +219,13 @@ impl<const N: usize> Custodian<N> {
         vault: Vault,
         generate: impl FnOnce() -> Secret,
     ) -> Result<Key, CustodyError> {
-        let mint = self
+        let first = self
             .ladder
             .mint(&survey.observed, vault)
             .map_err(|refusal| self.refused(refusal, survey))?;
-        let Some(target) = self.sources.get(mint.target.index()) else {
-            return Err(self.refused(Refusal::NoDurableSink, survey));
-        };
         let secret = generate();
         let failed = |error| CustodyError::Mint {
-            source: target.name().to_owned(),
+            source: self.name(first.target),
             error,
         };
         if secret.is_empty() {
@@ -244,53 +240,28 @@ impl<const N: usize> Custodian<N> {
             ))));
         }
         let fingerprint = self.fingerprint(&secret);
-        self.store(target.as_ref(), &secret, fingerprint)
-            .map_err(failed)?;
-        Self::set(
-            survey,
-            mint.target,
-            Observation::Holds(fingerprint),
-            Status::Copied,
-        );
+        let mut mint = first;
+        while !self.copy(survey, mint.target, &secret, fingerprint) {
+            let refused = mint.target;
+            match self.ladder.mint(&survey.observed, vault) {
+                Ok(next) => mint = next,
+                Err(_) => {
+                    return Err(CustodyError::Mint {
+                        source: self.name(refused),
+                        error: SourceError::new(Self::status_of(survey, refused)),
+                    });
+                }
+            }
+        }
         for cache in mint.cache.iter() {
             self.copy(survey, cache, &secret, fingerprint);
         }
         Ok(Key {
             secret,
             custody: Custody::Durable,
-            source: target.name().to_owned(),
+            source: self.name(mint.target),
             report: self.report(survey),
         })
-    }
-
-    fn copy(&self, survey: &mut Survey<N>, target: SourceId, secret: &[u8], fp: Fingerprint) {
-        let Some(source) = self.sources.get(target.index()) else {
-            return;
-        };
-        match self.store(source.as_ref(), secret, fp) {
-            Ok(()) => Self::set(survey, target, Observation::Holds(fp), Status::Copied),
-            Err(error) => {
-                let status = Status::CopyFailed(error.to_string());
-                if let Some(slot) = survey.statuses.get_mut(target.index()) {
-                    *slot = status;
-                }
-            }
-        }
-    }
-
-    fn store(
-        &self,
-        source: &dyn Source,
-        secret: &[u8],
-        fp: Fingerprint,
-    ) -> Result<(), SourceError> {
-        source.write(secret)?;
-        match source.read() {
-            Sighting::Holds(back) if self.fingerprint(&back) == fp => Ok(()),
-            Sighting::Holds(_) => Err(SourceError::new("read back a different key")),
-            Sighting::Empty => Err(SourceError::new("read back no key")),
-            Sighting::Unreachable(error) => Err(error),
-        }
     }
 
     fn proves(
@@ -427,6 +398,8 @@ impl Error for CustodyError {
         }
     }
 }
+
+mod copies;
 
 #[cfg(test)]
 mod tests;
