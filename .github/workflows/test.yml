@@ -1,0 +1,100 @@
+name: Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Dictator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: seuros/setup-dictator@master
+        with:
+          version: '0.28.1'
+      - run: dictator lint --format github .
+
+  crates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          mise_toml: |
+            [tools]
+            rust = { version = "1.99", components = "clippy,rustfmt" }
+
+      - name: Install libdbus
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Lint the core
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Lint the local stores
+        run: cargo clippy --features stores --all-targets -- -D warnings
+
+      - name: Lint the keyrings
+        run: cargo clippy --features keyring --all-targets -- -D warnings
+
+      - name: Test everything
+        run: cargo test --features keyring
+
+      - name: Run doc tests
+        run: cargo test --doc --features stores
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  bare-metal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          mise_toml: |
+            [tools]
+            rust = { version = "1.99", components = "clippy", targets = "thumbv7em-none-eabihf" }
+
+      - name: Build and lint on bare metal
+        run: |
+          cargo build --target thumbv7em-none-eabihf
+          cargo clippy --target thumbv7em-none-eabihf -- -D warnings
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          mise_toml: |
+            [tools]
+            rust = { version = "1.99", components = "clippy" }
+
+      - name: Lint and test the keychain
+        run: |
+          cargo clippy --features keyring --all-targets -- -D warnings
+          cargo test --features keyring
+
+  freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          mise_toml: |
+            [tools]
+            rust = { version = "1.99", components = "clippy", targets = "x86_64-unknown-freebsd" }
+
+      - name: Lint the local stores for FreeBSD
+        run: cargo clippy --features stores --all-targets --target x86_64-unknown-freebsd -- -D warnings

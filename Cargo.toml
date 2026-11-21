@@ -1,0 +1,68 @@
+[package]
+name = "custody-machines"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+description = "Decides where a vault key lives, so the only copy is never one that dies on reboot"
+repository = "https://github.com/seuros/custody_machines"
+readme = "README.md"
+exclude = [
+    "src/**/tests.rs",
+    "src/tests/",
+    "tests/",
+    ".github/",
+    ".dictate.toml",
+    ".gitignore",
+    "mise.toml",
+    "release-please-config.json",
+    ".release-please-manifest.json",
+]
+keywords = ["keyring", "secrets", "vault", "custody", "no-std"]
+categories = ["no-std", "cryptography", "os"]
+
+[features]
+default = []
+## Local key sources (key file, systemd credentials) and the `Custodian`.
+stores = ["dep:sha2", "dep:zeroize", "dep:rustix"]
+## OS keyrings: macOS Keychain, Secret Service, Linux keyutils as a cache.
+keyring = [
+    "stores",
+    "dep:keyring-core",
+    "dep:apple-native-keyring-store",
+    "dep:dbus-secret-service-keyring-store",
+    "dep:linux-keyutils-keyring-store",
+]
+
+[dependencies]
+sha2 = { version = "0.11", features = ["zeroize"], optional = true }
+zeroize = { version = "1", optional = true }
+rustix = { version = "1", default-features = false, features = ["process", "std"], optional = true }
+keyring-core = { version = "1", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"], optional = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+dbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+linux-keyutils-keyring-store = { version = "1", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[package.metadata.docs.rs]
+features = ["keyring"]
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "warn"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
